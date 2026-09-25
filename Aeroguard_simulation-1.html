@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>KAVACH — N₂ Cooling &amp; Control System · Live Simulation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080b10;
+    --panel:#0e131b;
+    --panel-line:#1c2430;
+    --cold:#4db8ff;
+    --cold-hot:#ff7a45;
+    --electronics:#28e0a8;
+    --warn:#ff4d5e;
+    --text:#dfe7f0;
+    --muted:#7286a0;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--bg); color:var(--text);
+    font-family:'Space Grotesk', sans-serif;
+    overflow:hidden;
+  }
+  #scene{position:fixed; inset:0;}
+  #scene canvas{display:block;}
+
+  .veil{
+    position:fixed; inset:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(77,184,255,0.06), transparent 55%),
+      radial-gradient(ellipse at 50% 100%, rgba(0,0,0,0.55), transparent 60%);
+  }
+
+  header.hud{
+    position:fixed; top:0; left:0; right:0;
+    display:flex; align-items:flex-start; justify-content:space-between;
+    padding:22px 26px;
+    pointer-events:none;
+    z-index:5;
+  }
+  .title-block{pointer-events:auto;}
+  .kicker{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px; letter-spacing:.08em; color:var(--cold);
+    margin:0 0 6px 0;
+  }
+  h1{
+    margin:0; font-size:22px; font-weight:600; letter-spacing:-.01em;
+  }
+  .sub{margin:4px 0 0; font-size:13px; color:var(--muted);}
+
+  .status-pill{
+    pointer-events:auto;
+    display:flex; align-items:center; gap:8px;
+    background:var(--panel); border:1px solid var(--panel-line);
+    border-radius:100px; padding:8px 16px 8px 12px;
+    font-family:'JetBrains Mono', monospace; font-size:12px;
+  }
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--electronics);
+       box-shadow:0 0 8px var(--electronics); animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+
+  .readouts{
+    position:fixed; left:24px; bottom:24px;
+    display:grid; grid-template-columns:repeat(2, minmax(128px,1fr));
+    gap:10px; z-index:5; pointer-events:auto;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--panel-line);
+    border-radius:10px; padding:10px 14px; min-width:120px;
+  }
+  .card .lbl{font-size:10.5px; color:var(--muted); letter-spacing:.04em;}
+  .card .val{font-family:'JetBrains Mono', monospace; font-size:18px; font-weight:600; margin-top:2px;}
+  .card .val span{font-size:12px; color:var(--muted); font-weight:400;}
+  .card.cold .val{color:var(--cold);}
+  .card.warm .val{color:var(--cold-hot);}
+  .card.elec .val{color:var(--electronics);}
+
+  .stage{
+    position:fixed; right:24px; bottom:24px; z-index:5;
+    background:var(--panel); border:1px solid var(--panel-line);
+    border-radius:10px; padding:14px 16px; width:250px;
+  }
+  .stage .lbl{font-size:10.5px; color:var(--muted); letter-spacing:.04em; margin-bottom:6px;}
+  .stage .name{font-size:14px; font-weight:600;}
+  .stage .desc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.4; min-height:32px;}
+  .bar{height:3px; background:#1c2430; border-radius:2px; margin-top:10px; overflow:hidden;}
+  .bar i{display:block; height:100%; width:0%; background:var(--cold); transition:width .25s linear;}
+
+  .controls{
+    position:fixed; top:24px; right:26px; z-index:6;
+    display:flex; gap:8px; pointer-events:auto;
+  }
+  button{
+    font-family:'JetBrains Mono', monospace; font-size:11.5px;
+    background:var(--panel); color:var(--text); border:1px solid var(--panel-line);
+    border-radius:8px; padding:8px 12px; cursor:pointer;
+  }
+  button:hover{border-color:var(--cold); color:var(--cold);}
+  button.active{border-color:var(--cold); color:var(--cold); background:#0f1a24;}
+
+  .hint{
+    position:fixed; left:50%; top:20px; transform:translateX(-50%);
+    font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--muted);
+    z-index:5; pointer-events:none; opacity:.75;
+  }
+
+  .label3d{
+    position:absolute; transform:translate(-50%,-100%);
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color:var(--text); background:rgba(8,11,16,0.72);
+    border:1px solid var(--panel-line); border-radius:5px;
+    padding:3px 7px; white-space:nowrap; pointer-events:none;
+    z-index:4;
+  }
+  .label3d small{display:block; color:var(--muted); font-size:9px; margin-top:1px;}
+
+  @media (max-width:720px){
+    header.hud{padding:14px 16px; flex-direction:column; gap:10px;}
+    .readouts{left:14px; bottom:14px; grid-template-columns:repeat(2,minmax(100px,1fr)); gap:8px;}
+    .stage{right:14px; left:14px; bottom:130px; width:auto;}
+    .controls{top:auto; bottom:14px; right:14px;}
+    h1{font-size:17px;}
+    .hint{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="scene"></div>
+<div class="veil"></div>
+<div id="labels"></div>
+
+<header class="hud">
+  <div class="title-block">
+    <p class="kicker">KAVACH · SIMULATION MODE</p>
+    <h1>N₂ Cooling &amp; Control System</h1>
+    <p class="sub">Temperature stable · Pressure controlled · Moisture free</p>
+  </div>
+  <div class="status-pill"><span class="dot"></span> SYSTEM RUNNING</div>
+</header>
+
+<p class="hint">drag to orbit · scroll to zoom</p>
+
+<div class="controls">
+  <button id="btnPause">⏸ pause</button>
+  <button id="btnSpeed" class="active">1×</button>
+  <button id="btnLabels" class="active">labels</button>
+</div>
+
+<div class="readouts">
+  <div class="card warm"><div class="lbl">CYLINDER TEMP</div><div class="val" id="rCylT">25.0<span>°C</span></div></div>
+  <div class="card"><div class="lbl">CYLINDER PRESSURE</div><div class="val" id="rCylP">198<span>bar</span></div></div>
+  <div class="card cold"><div class="lbl">N₂ OUTLET TEMP</div><div class="val" id="rOutT">—<span>°C</span></div></div>
+  <div class="card"><div class="lbl">FLOW RATE</div><div class="val" id="rFlow">0.0<span>L/min</span></div></div>
+  <div class="card"><div class="lbl">ENCLOSURE HUMIDITY</div><div class="val" id="rHum">—<span>%RH</span></div></div>
+  <div class="card elec"><div class="lbl">PCB / ENCLOSURE</div><div class="val" id="rPcbT">—<span>°C</span></div></div>
+</div>
+
+<div class="stage">
+  <div class="lbl">CURRENT STAGE</div>
+  <div class="name" id="stageName">N₂ Cylinder</div>
+  <div class="desc" id="stageDesc">High-pressure nitrogen (≈200 bar) held in a thermally insulated, certified cylinder.</div>
+  <div class="bar"><i id="stageBar"></i></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ============================================================
+   KAVACH — N2 Cooling & Control System · 3D animated simulation
+   ============================================================ */
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x080b10, 0.0135);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 500);
+camera.position.set(6, 9, 34);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x080b10, 1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('scene').appendChild(renderer.domElement);
+
+// -------------------- lighting --------------------
+scene.add(new THREE.AmbientLight(0x36455c, 1.1));
+const key = new THREE.DirectionalLight(0xffffff, 1.0);
+key.position.set(20, 30, 15);
+key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.left=-40; key.shadow.camera.right=40;
+key.shadow.camera.top=40; key.shadow.camera.bottom=-40;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x4db8ff, 0.5);
+rim.position.set(-20,10,-20);
+scene.add(rim);
+const fillCold = new THREE.PointLight(0x4db8ff, 0.6, 40);
+fillCold.position.set(4, 6, 6);
+scene.add(fillCold);
+
+// -------------------- ground / base --------------------
+const baseMat = new THREE.MeshStandardMaterial({color:0x131a24, metalness:0.5, roughness:0.55});
+const base = new THREE.Mesh(new THREE.BoxGeometry(56, 0.6, 12), baseMat);
+base.position.set(2, -3.3, 0);
+base.receiveShadow = true;
+scene.add(base);
+const grid = new THREE.GridHelper(60, 30, 0x1c2430, 0x131a24);
+grid.position.y = -2.99;
+scene.add(grid);
+
+// -------------------- materials --------------------
+const M = {
+  steel:   new THREE.MeshStandardMaterial({color:0x8a97a8, metalness:0.85, roughness:0.32}),
+  darkSteel: new THREE.MeshStandardMaterial({color:0x3a4250, metalness:0.7, roughness:0.4}),
+  brass:   new THREE.MeshStandardMaterial({color:0xc9a24b, metalness:0.75, roughness:0.35}),
+  copper:  new THREE.MeshStandardMaterial({color:0xd97b4a, metalness:0.8, roughness:0.3}),
+  cylinder:new THREE.MeshStandardMaterial({color:0x2277c9, metalness:0.5, roughness:0.35}),
+  insul:   new THREE.MeshStandardMaterial({color:0xe6dcc4, roughness:0.85, metalness:0.05}),
+  pipe:    new THREE.MeshStandardMaterial({color:0x6d7c8f, metalness:0.7, roughness:0.3}),
+  glass:   new THREE.MeshPhysicalMaterial({color:0xbcd6e8, transparent:true, opacity:0.18, roughness:0.05, metalness:0, transmission:0.6}),
+  pcb:     new THREE.MeshStandardMaterial({color:0x0c5b3d, metalness:0.2, roughness:0.65}),
+  led:     new THREE.MeshBasicMaterial({color:0x28e0a8}),
+  black:   new THREE.MeshStandardMaterial({color:0x14181f, metalness:0.4, roughness:0.6}),
+  peltierHot: new THREE.MeshStandardMaterial({color:0xff7a45, emissive:0x552200, metalness:0.4, roughness:0.5}),
+  peltierCold: new THREE.MeshStandardMaterial({color:0x4db8ff, emissive:0x0a2233, metalness:0.4, roughness:0.5}),
+};
+
+const group = new THREE.Group();
+group.position.x = -10;
+scene.add(group);
+
+function addLabel(obj3d, title, sub){
+  labels.push({obj:obj3d, title, sub});
+}
+const labels = [];
+
+// ==================================================
+// 1. N2 CYLINDER (insulated)
+// ==================================================
+const cylX = -19;
+const insulEnc = new THREE.Mesh(new THREE.CylinderGeometry(2.3,2.3,10,24), M.insul);
+insulEnc.position.set(cylX, 1.5, 0);
+insulEnc.castShadow = insulEnc.receiveShadow = true;
+group.add(insulEnc);
+const cyl = new THREE.Mesh(new THREE.CylinderGeometry(1.55,1.55,9.4,24), M.cylinder);
+cyl.position.set(cylX, 1.6, 0);
+cyl.castShadow = true;
+group.add(cyl);
+addLabel(insulEnc, "N₂ Cylinder", "High pressure · ~200 bar, insulated");
+
+// pressure gauge on cylinder
+const gauge1 = new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,0.25,20), M.steel);
+gauge1.rotation.z = Math.PI/2;
+gauge1.position.set(cylX+2.6, 5.6, 0);
+group.add(gauge1);
+
+// ==================================================
+// 2. Pressure regulator
+// ==================================================
+const regX = -14.5;
+const reg = new THREE.Mesh(new THREE.ConeGeometry(1.1,2.2,16), M.brass);
+reg.rotation.z = -Math.PI/2;
+reg.position.set(regX, 2.0, 0);
+reg.castShadow = true;
+group.add(reg);
+const gauge2 = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,0.25,20), M.steel);
+gauge2.rotation.x = Math.PI/2;
+gauge2.position.set(regX, 3.6, 0);
+group.add(gauge2);
+addLabel(reg, "Regulator", "Reduces to 5–10 bar working pressure");
+
+// ==================================================
+// 3. Filter
+// ==================================================
+const filtX = -11.5;
+const filter = new THREE.Mesh(new THREE.CylinderGeometry(0.65,0.65,1.6,16), M.glass);
+filter.rotation.z = Math.PI/2;
+filter.position.set(filtX, 2.0, 0);
+group.add(filter);
+addLabel(filter, "Filter", "Removes particulates");
+
+// ==================================================
+// 4. Flow control valve
+// ==================================================
+const fcvX = -9;
+const fcv = new THREE.Mesh(new THREE.BoxGeometry(1.3,1.3,1.3), M.darkSteel);
+fcv.position.set(fcvX, 2.0, 0);
+fcv.castShadow = true;
+group.add(fcv);
+const fcvKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,0.5,16), M.steel);
+fcvKnob.position.set(fcvX, 2.85, 0);
+group.add(fcvKnob);
+addLabel(fcv, "Flow Control Valve", "Sets N₂ flow rate");
+
+// ==================================================
+// 5. Solenoid valve
+// ==================================================
+const solX = -6.5;
+const sol = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.9,1.8,16), M.darkSteel);
+sol.position.set(solX, 2.0, 0);
+group.add(sol);
+const solCoil = new THREE.Mesh(new THREE.TorusGeometry(0.55,0.12,10,20), M.brass);
+solCoil.rotation.x = Math.PI/2;
+solCoil.position.set(solX, 2.9, 0);
+group.add(solCoil);
+addLabel(sol, "Solenoid Valve", "Automatic on/off control");
+
+// ==================================================
+// 6. Peltier module + copper coil heat exchanger + heatsink + fan
+// ==================================================
+const pelX = -1;
+// copper coil (cold plate internal)
+const coilGroup = new THREE.Group();
+for(let i=0;i<5;i++){
+  const c = new THREE.Mesh(new THREE.TorusGeometry(0.7,0.09,10,24), M.copper);
+  c.position.set(pelX-1.3, 2.6, -0.6+i*0.3);
+  c.rotation.y = Math.PI/2;
+  c.castShadow = true;
+  coilGroup.add(c);
+}
+group.add(coilGroup);
+const coldPlate = new THREE.Mesh(new THREE.BoxGeometry(0.3,2.2,2.2), M.steel);
+coldPlate.position.set(pelX-1.9, 2.0, 0);
+group.add(coldPlate);
+
+const peltier = new THREE.Mesh(new THREE.BoxGeometry(0.5,2.0,2.0), M.peltierCold);
+peltier.position.set(pelX-1.4, 2.0, 0);
+peltier.castShadow = true;
+group.add(peltier);
+addLabel(peltier, "Peltier (TEC) Module", "Cools the cold plate");
+
+const hotSide = new THREE.Mesh(new THREE.BoxGeometry(0.4,2.0,2.0), M.peltierHot);
+hotSide.position.set(pelX-1.0, 2.0, 0);
+group.add(hotSide);
+
+// heatsink fins
+const heatsinkGroup = new THREE.Group();
+for(let i=0;i<9;i++){
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(1.6,2.4,0.08), M.darkSteel);
+  fin.position.set(pelX+0.2+i*0.22, 2.0, 0);
+  fin.castShadow = true;
+  heatsinkGroup.add(fin);
+}
+group.add(heatsinkGroup);
+
+// fan
+const fanHub = new THREE.Group();
+const fanRing = new THREE.Mesh(new THREE.TorusGeometry(1.05,0.08,10,24), M.black);
+fanHub.add(fanRing);
+for(let i=0;i<7;i++){
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.95,0.22,0.04), M.steel);
+  blade.position.set(Math.cos(i*(Math.PI*2/7))*0.5, Math.sin(i*(Math.PI*2/7))*0.5, 0);
+  blade.rotation.z = i*(Math.PI*2/7);
+  fanHub.add(blade);
+}
+fanHub.position.set(pelX+2.7, 2.0, 0);
+fanHub.rotation.y = Math.PI/2;
+group.add(fanHub);
+addLabel(fanHub, "Heatsink + Fan", "Removes heat from hot side");
+
+// ==================================================
+// 7. KAVACH electronics enclosure
+// ==================================================
+const encX = 8;
+const encFrame = new THREE.Mesh(new THREE.BoxGeometry(6.4,5,5), M.insul);
+encFrame.position.set(encX, 2.0, 0);
+encFrame.castShadow = encFrame.receiveShadow = true;
+group.add(encFrame);
+const encGlass = new THREE.Mesh(new THREE.BoxGeometry(6.0,4.6,4.6), M.glass);
+encGlass.position.set(encX, 2.0, 0);
+group.add(encGlass);
+
+// PCB inside
+const pcb = new THREE.Mesh(new THREE.BoxGeometry(3.4,0.15,3.0), M.pcb);
+pcb.position.set(encX-0.3, 0.4, 0);
+pcb.rotation.x = -0.05;
+group.add(pcb);
+const chip = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.15,0.7), M.black);
+chip.position.set(encX-0.3, 0.55, 0.4);
+group.add(chip);
+const led = new THREE.Mesh(new THREE.SphereGeometry(0.08,10,10), M.led);
+led.position.set(encX+0.9, 0.55, -0.8);
+group.add(led);
+addLabel(encFrame, "KAVACH Electronics Enclosure", "Pressure &amp; moisture controlled");
+
+// pressure relief valve
+const relief = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.28,1.1,12), M.brass);
+relief.rotation.z = Math.PI/2.4;
+relief.position.set(encX+3.6, 4.0, 0);
+group.add(relief);
+addLabel(relief, "Pressure Relief Valve", "Emergency vent");
+
+// controlled outlet / exhaust
+const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,3.2,14), M.pipe);
+exhaust.rotation.z = Math.PI/2;
+exhaust.position.set(encX+5.6, 0.5, 0);
+group.add(exhaust);
+addLabel(exhaust, "Controlled Outlet", "To exhaust / purge");
+
+// mounting base plate under everything
+const mount = new THREE.Mesh(new THREE.BoxGeometry(34, 0.3, 6), M.darkSteel);
+mount.position.set(-5, -0.6, 0);
+mount.receiveShadow = true;
+group.add(mount);
+
+// ==================================================
+// Pipe run connecting all stages
+// ==================================================
+const pipePts = [
+  new THREE.Vector3(cylX, 3.4, 0),
+  new THREE.Vector3(cylX+1.2, 4.6, 0),
+  new THREE.Vector3(regX-1.6, 4.6, 0),
+  new THREE.Vector3(regX, 3.6, 0),
+  new THREE.Vector3(regX+1.2, 2.0, 0),
+  new THREE.Vector3(filtX-0.9, 2.0, 0),
+  new THREE.Vector3(filtX+0.9, 2.0, 0),
+  new THREE.Vector3(fcvX-0.8, 2.0, 0),
+  new THREE.Vector3(fcvX+0.8, 2.0, 0),
+  new THREE.Vector3(solX-0.9, 2.0, 0),
+  new THREE.Vector3(solX+0.9, 2.0, 0),
+  new THREE.Vector3(pelX-2.1, 2.0, 0),
+];
+const pipeCurve1 = new THREE.CatmullRomCurve3(pipePts);
+const pipeGeo1 = new THREE.TubeGeometry(pipeCurve1, 120, 0.22, 10, false);
+const pipeMesh1 = new THREE.Mesh(pipeGeo1, M.pipe);
+pipeMesh1.castShadow = true;
+group.add(pipeMesh1);
+
+const pipePts2 = [
+  new THREE.Vector3(pelX+1.85, 2.0, 0),
+  new THREE.Vector3(pelX+3.4, 2.0, 0),
+  new THREE.Vector3(encX-4.0, 2.6, 0),
+  new THREE.Vector3(encX-3.2, 2.6, 0),
+];
+const pipeCurve2 = new THREE.CatmullRomCurve3(pipePts2);
+const pipeGeo2 = new THREE.TubeGeometry(pipeCurve2, 60, 0.22, 10, false);
+group.add(new THREE.Mesh(pipeGeo2, M.pipe));
+
+// full particle flow path (cylinder -> ... -> exhaust)
+const flowPts = pipePts.concat([
+  new THREE.Vector3(pelX-1.4, 2.0, 0),
+  new THREE.Vector3(pelX, 2.0, 0),
+  new THREE.Vector3(pelX+1.0, 2.0, 0),
+]).concat(pipePts2).concat([
+  new THREE.Vector3(encX-1.5, 1.2, 0),
+  new THREE.Vector3(encX+0.5, 0.9, 0.6),
+  new THREE.Vector3(encX+2.4, 1.4, -0.4),
+  new THREE.Vector3(encX+3.6, 0.9, 0),
+  new THREE.Vector3(encX+5.6, 0.5, 0),
+  new THREE.Vector3(encX+7.1, 0.5, 0),
+]);
+const flowCurve = new THREE.CatmullRomCurve3(flowPts);
+
+// ==================================================
+// Flow particles
+// ==================================================
+const PARTICLE_COUNT = 26;
+const particles = [];
+const pGeo = new THREE.SphereGeometry(0.14, 10, 10);
+const coldColor = new THREE.Color(0x4db8ff);
+const warmColor = new THREE.Color(0xaed4f2);
+const outColor = new THREE.Color(0xdff2ff);
+
+for(let i=0;i<PARTICLE_COUNT;i++){
+  const mat = new THREE.MeshBasicMaterial({color: warmColor.clone()});
+  const m = new THREE.Mesh(pGeo, mat);
+  m.userData.t = i / PARTICLE_COUNT;
+  group.add(m);
+  particles.push(m);
+}
+// cooling transition point along path (approx where peltier sits)
+const COOL_START = 0.52, COOL_END = 0.60;
+
+// ==================================================
+// CSS 2D label overlay
+// ==================================================
+const labelLayer = document.getElementById('labels');
+const labelEls = labels.map(l=>{
+  const el = document.createElement('div');
+  el.className = 'label3d';
+  el.innerHTML = l.title + '<small>'+l.sub+'</small>';
+  labelLayer.appendChild(el);
+  return el;
+});
+let labelsOn = true;
+
+function updateLabels(){
+  const v = new THREE.Vector3();
+  labels.forEach((l,i)=>{
+    l.obj.getWorldPosition(v);
+    v.y += 1.6;
+    v.project(camera);
+    const x = (v.x*0.5+0.5)*window.innerWidth;
+    const y = (-(v.y*0.5)+0.5)*window.innerHeight;
+    const behind = v.z > 1;
+    labelEls[i].style.display = (labelsOn && !behind) ? 'block' : 'none';
+    labelEls[i].style.left = x+'px';
+    labelEls[i].style.top = y+'px';
+  });
+}
+
+// ==================================================
+// Orbit controls (lightweight manual implementation)
+// ==================================================
+let camTheta = 0.35, camPhi = 1.15, camDist = 36, camTargetX = -3;
+let dragging=false, lastX=0, lastY=0, autoRotate=true;
+const domEl = renderer.domElement;
+domEl.addEventListener('pointerdown', e=>{dragging=true; lastX=e.clientX; lastY=e.clientY; autoRotate=false;});
+window.addEventListener('pointerup', ()=>dragging=false);
+window.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  camTheta -= (e.clientX-lastX)*0.005;
+  camPhi   -= (e.clientY-lastY)*0.004;
+  camPhi = Math.max(0.35, Math.min(1.5, camPhi));
+  lastX=e.clientX; lastY=e.clientY;
+});
+domEl.addEventListener('wheel', e=>{
+  camDist += e.deltaY*0.02;
+  camDist = Math.max(14, Math.min(60, camDist));
+  e.preventDefault();
+}, {passive:false});
+
+function updateCamera(){
+  if(autoRotate) camTheta += 0.0009;
+  const x = camTargetX + camDist*Math.sin(camPhi)*Math.sin(camTheta);
+  const z = camDist*Math.sin(camPhi)*Math.cos(camTheta);
+  const y = camDist*Math.cos(camPhi);
+  camera.position.set(x,y,z);
+  camera.lookAt(camTargetX, 1.5, 0);
+}
+
+// ==================================================
+// Simulation state / HUD readouts
+// ==================================================
+let paused = false;
+let speedMul = 1;
+let simTime = 0;
+
+const stages = [
+  {t:0.00, name:"N₂ Cylinder", desc:"High-pressure nitrogen (~200 bar) held in a thermally insulated, certified cylinder."},
+  {t:0.10, name:"Pressure Regulator", desc:"Reduces cylinder pressure down to a 5–10 bar working pressure."},
+  {t:0.22, name:"Filter", desc:"Removes particulates before the gas reaches the control valves."},
+  {t:0.32, name:"Flow Control Valve", desc:"Sets the N₂ flow rate for the cooling loop."},
+  {t:0.42, name:"Solenoid Valve", desc:"Automatic electronic on/off control of the gas line."},
+  {t:0.54, name:"Peltier (TEC) + Heat Exchanger", desc:"Peltier module cools a copper cold plate; N₂ flowing through the coil is chilled — the Peltier never touches the gas directly."},
+  {t:0.70, name:"Heatsink + Fan", desc:"Rejects heat pulled from the cold side out to ambient air."},
+  {t:0.84, name:"KAVACH Enclosure", desc:"Cold, dry N₂ (≈ −40°C) maintains a pressure- and moisture-controlled electronics enclosure."},
+  {t:0.96, name:"Controlled Outlet", desc:"Excess gas vents through the controlled exhaust / purge line."},
+];
+const stageNameEl = document.getElementById('stageName');
+const stageDescEl = document.getElementById('stageDesc');
+const stageBarEl = document.getElementById('stageBar');
+let headParticleT = 0;
+
+function currentStage(t){
+  let s = stages[0];
+  for(const st of stages){ if(t>=st.t) s = st; }
+  return s;
+}
+
+const rCylT=document.getElementById('rCylT'), rCylP=document.getElementById('rCylP'),
+      rOutT=document.getElementById('rOutT'), rFlow=document.getElementById('rFlow'),
+      rHum=document.getElementById('rHum'), rPcbT=document.getElementById('rPcbT');
+
+// ==================================================
+// Animate
+// ==================================================
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if(!paused) simTime += dt*speedMul;
+
+  // fan spin
+  fanHub.rotation.x += (paused?0:0.35);
+
+  // led blink
+  led.material.color.setHex( (Math.floor(simTime*2)%2===0) ? 0x28e0a8 : 0x0c5b3d );
+
+  // particles along flow path
+  if(!paused){
+    particles.forEach(p=>{
+      p.userData.t += dt*0.09*speedMul;
+      if(p.userData.t>1) p.userData.t -= 1;
+      const pos = flowCurve.getPointAt(p.userData.t);
+      p.position.copy(pos);
+      let col;
+      const t = p.userData.t;
+      if(t < COOL_START) col = warmColor;
+      else if(t < COOL_END) col = warmColor.clone().lerp(coldColor, (t-COOL_START)/(COOL_END-COOL_START));
+      else col = coldColor.clone().lerp(outColor, Math.min(1,(t-COOL_END)/0.3));
+      p.material.color.copy(col);
+    });
+    headParticleT = particles[0].userData.t;
+  }
+
+  // HUD numbers
+  const outletTemp = -40 + 65*Math.max(0, 1-Math.min(1, simTime/14)) ;
+  const cylTemp = 25 - Math.min(3, simTime*0.02);
+  const cylPressure = 198 - Math.min(6, simTime*0.03);
+  const flowRate = paused ? 0 : (3.2 + Math.sin(simTime*1.3)*0.35);
+  const humidity = Math.max(2, 18 - Math.min(15, simTime*0.9));
+  const pcbTemp = 24 - Math.min(9, simTime*0.6);
+
+  rCylT.innerHTML = cylTemp.toFixed(1)+'<span>°C</span>';
+  rCylP.innerHTML = cylPressure.toFixed(0)+'<span>bar</span>';
+  rOutT.innerHTML = outletTemp.toFixed(1)+'<span>°C</span>';
+  rFlow.innerHTML = flowRate.toFixed(1)+'<span>L/min</span>';
+  rHum.innerHTML  = humidity.toFixed(0)+'<span>%RH</span>';
+  rPcbT.innerHTML = pcbTemp.toFixed(1)+'<span>°C</span>';
+
+  const st = currentStage(headParticleT);
+  if(stageNameEl.textContent !== st.name){
+    stageNameEl.textContent = st.name;
+    stageDescEl.textContent = st.desc;
+  }
+  stageBarEl.style.width = (headParticleT*100)+'%';
+
+  updateCamera();
+  updateLabels();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ==================================================
+// UI controls
+// ==================================================
+document.getElementById('btnPause').addEventListener('click', function(){
+  paused = !paused;
+  this.textContent = paused ? '▶ resume' : '⏸ pause';
+  this.classList.toggle('active', paused);
+});
+document.getElementById('btnSpeed').addEventListener('click', function(){
+  speedMul = speedMul===1 ? 2.5 : (speedMul===2.5 ? 0.4 : 1);
+  this.textContent = speedMul===1 ? '1×' : (speedMul===2.5 ? '2.5×' : '0.4×');
+});
+document.getElementById('btnLabels').addEventListener('click', function(){
+  labelsOn = !labelsOn;
+  this.classList.toggle('active', labelsOn);
+});
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
